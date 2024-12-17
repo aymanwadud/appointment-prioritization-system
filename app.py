@@ -167,17 +167,18 @@ def main():
                 </script>
             """,
               height=400,
-              scrolling=True
+              scrolling=True,
+               allow_unsafe_jscode = True
           )
 
           selected_value = st.session_state.get("agGrid_key", None)
-
           if selected_value:
-               try:
+              try:
                    selected_value = json.loads(selected_value)
                    handle_button_click(int(selected_value['patientId']), selected_value['buttonType'])
                    st.session_state["agGrid_key"] = None # Remove key from session state
-               except:
-                   st.session_state["agGrid_key"] = None
+              except:
+                 st.session_state["agGrid_key"] = None
+
 if __name__ == "__main__":
     main()
