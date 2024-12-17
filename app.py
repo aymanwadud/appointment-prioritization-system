@@ -97,7 +97,14 @@ def main():
                 finally:
                     session.close()
 
-
+           # Convert datetime to readable string
+          def format_timedelta(time_diff):
+              if not time_diff:
+                  return "Not Checked In"
+              total_seconds = int(time_diff.total_seconds())
+              hours, remainder = divmod(total_seconds, 3600)
+              minutes, seconds = divmod(remainder, 60)
+              return f"{hours:02}:{minutes:02}:{seconds:02}"
 
           # Define the check in and done button click
           def handle_button_click(patient_id, button_type):
@@ -105,43 +112,47 @@ def main():
                   check_in_patient(patient_id)
              elif button_type == "done":
                   mark_appointment_done(patient_id)
-
           # Create the HTML table
           html_table = f"""
-             <table style='width: 100%; border-collapse: collapse;'>
+             <table style='width: 100%; border-collapse: collapse; color: white;'>
                <thead>
                  <tr style='border-bottom: 1px solid #ddd;'>
+                   <th style='padding: 8px; text-align: left;'>SL</th>
                    <th style='padding: 8px; text-align: left;'>Patient Name</th>
                    <th style='padding: 8px; text-align: left;'>Type</th>
-                   <th style='padding: 8px; text-align: left;'>Check In Time</th>
-                   <th style='padding: 8px; text-align: left;'>Priority Score</th>
+                   <th style='padding: 8px; text-align: left;'>Wait Time</th>
                    <th style='padding: 8px; text-align: left;'>Actions</th>
                   </tr>
                </thead>
-                <tbody>
+                <tbody id="sortable-table">
                     """
-
           for index, row in df.iterrows():
-             patient_id = row["id"]
-             row_style = ""
-             if row['is_checked_in']:
+              patient_id = row["id"]
+              row_style = ""
+              if row['is_checked_in']:
                  row_style = "background-color: green;"
-
-             html_table += f"""
-                         <tr style='{row_style} border-bottom: 1px solid #ddd;'>
+              wait_time = None
+              if row["check_in_time"]:
+                 wait_time = datetime.now() - row['check_in_time']
+              html_table += f"""
+                         <tr style='{row_style} border-bottom: 1px solid #ddd;' draggable="true"  data-id = "{patient_id}">
+                             <td style='padding: 8px;'>{row['sl']}</td>
                            <td style='padding: 8px;'>{row['patient_name']}</td>
                            <td style='padding: 8px;'>{row['type']}</td>
-                           <td style='padding: 8px;'>{row['check_in_time'] if row['check_in_time'] else ''}</td>
-                           <td style='padding: 8px;'>{row['priority_score']}</td>
+                           <td style='padding: 8px;'>{format_timedelta(wait_time)}</td>
                          <td style='padding: 8px;'>
                          <button style='margin-right: 5px; padding: 5px 10px;' onclick="
-                           (() => {{
-                              Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'check_in'}}));
+                            (() => {{
+                                 const id = '{patient_id}';
+                                 const type = 'check_in'
+                                 Streamlit.setComponentValue(JSON.stringify({{patientId: id, buttonType: type}}));
                             }})()
                             ">Check In</button>
                              <button  style='padding: 5px 10px;' onclick="
                                 (() => {{
-                                    Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'done'}}));
+                                    const id = '{patient_id}';
+                                    const type = 'done'
+                                    Streamlit.setComponentValue(JSON.stringify({{patientId: id, buttonType: type}}));
                                  }})()
                                 ">Done</button>
                             </td>
@@ -156,14 +167,35 @@ def main():
                <script>
                 const elements = document.querySelectorAll("button");
                 elements.forEach(function(element) {{
-                     element.addEventListener('click', function() {{
-                        const value = this.id
-                        const data = value.split("_");
-                        const buttonType = data[0]
-                        const patientId = this.id.split('_')[1]
-                        Streamlit.setComponentValue(JSON.stringify({{patientId: patientId, buttonType: buttonType}}))
-                        }});
+                     element.addEventListener('click', function(event) {{
+                         event.preventDefault()
+                         const value = this.id
+                         const data = value.split("_");
+                         const buttonType = data[0]
+                         const patientId = this.parentElement.parentElement.getAttribute("data-id")
+                         Streamlit.setComponentValue(JSON.stringify({{patientId: patientId, buttonType: buttonType}}))
                      }});
+                    }});
+                const table = document.getElementById('sortable-table');
+                 let draggedItem = null;
+                 table.addEventListener('dragstart', (event) => {{
+                     draggedItem = event.target;
+                     event.dataTransfer.effectAllowed = "move"
+                 }});
+
+                  table.addEventListener('dragover', (event) => {{
+                     event.preventDefault();
+                    if (event.target.tagName === 'TR') {
+                        const targetRow = event.target;
+                        table.insertBefore(draggedItem, targetRow)
+                    }
+                 }});
+
+                table.addEventListener('dragend', (event) => {{
+                         const rows = Array.from(table.children);
+                         const rowsToUpdate = rows.map((row, index) => ({{ id: row.getAttribute('data-id'), sl: index + 1 }}));
+                         Streamlit.setComponentValue(JSON.stringify(rowsToUpdate))
+                 }});
                 </script>
             """,
               height=400,
@@ -175,10 +207,30 @@ def main():
           if selected_value:
                try:
                    selected_value = json.loads(selected_value)
-                   handle_button_click(int(selected_value['patientId']), selected_value['buttonType'])
+                   if selected_value.get('buttonType'):
+                       handle_button_click(int(selected_value['patientId']), selected_value['buttonType'])
                    st.session_state["agGrid_key"] = None # Remove key from session state
                except:
                    st.session_state["agGrid_key"] = None
+          rowsToUpdate = st.session_state.get("agGrid_key", None)
+
+          if rowsToUpdate:
+            session = Session()
+            try:
+              rowsToUpdate =  json.loads(rowsToUpdate)
+              for row in rowsToUpdate:
+                  appt = session.query(Appointment).filter(Appointment.id == row['id']).first()
+                  if appt:
+                    appt.sl = row['sl']
+              session.commit()
+              st.session_state.queue = queue_agent.get_prioritized_queue()
+              st.session_state["agGrid_key"] = None # Remove key from session state
+              st.rerun()
+            except:
+                session.rollback()
+            finally:
+                session.close()
+
 
 if __name__ == "__main__":
     main()
