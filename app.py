@@ -80,6 +80,7 @@ def main():
                st.session_state.queue = queue_agent.get_prioritized_queue()
                st.rerun()
 
+
           def mark_appointment_done(patient_id):
                 session = Session()
                 try:
@@ -156,7 +157,6 @@ def main():
                         """
           html_table += "</tbody></table>"
 
-
           # Render HTML using st.components.v1.html
           st.components.v1.html(
               f"""
@@ -176,6 +176,7 @@ def main():
             """,
               height=400,
               scrolling=True,
+
           )
 
           selected_value = st.session_state.get("agGrid_key", None)
@@ -186,7 +187,6 @@ def main():
                    st.session_state["agGrid_key"] = None # Remove key from session state
                except:
                    st.session_state["agGrid_key"] = None
-
 
 if __name__ == "__main__":
     main()
