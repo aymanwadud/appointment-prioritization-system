@@ -14,7 +14,7 @@ import json
 load_dotenv()
 
 def main():
-    st.title("Physician Chamber Appointment System")
+    st.title("Prioritized Appointment System")
 
     # Initialize agents
     ingestion_agent = DataIngestionAgent()
