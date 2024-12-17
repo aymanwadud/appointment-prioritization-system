@@ -107,51 +107,71 @@ def main():
                   mark_appointment_done(patient_id)
 
           # Create the HTML table
-          html_table = f"""<table style='width: 100%; border-collapse: collapse;'>
-                        <thead>
-                          <tr style='border-bottom: 1px solid #ddd;'>
-                            <th style='padding: 8px; text-align: left;'>Patient Name</th>
-                            <th style='padding: 8px; text-align: left;'>Type</th>
-                            <th style='padding: 8px; text-align: left;'>Check In Time</th>
-                            <th style='padding: 8px; text-align: left;'>Priority Score</th>
-                            <th style='padding: 8px; text-align: left;'>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          """
+          html_table = f"""
+             <table style='width: 100%; border-collapse: collapse;'>
+               <thead>
+                 <tr style='border-bottom: 1px solid #ddd;'>
+                   <th style='padding: 8px; text-align: left;'>Patient Name</th>
+                   <th style='padding: 8px; text-align: left;'>Type</th>
+                   <th style='padding: 8px; text-align: left;'>Check In Time</th>
+                   <th style='padding: 8px; text-align: left;'>Priority Score</th>
+                   <th style='padding: 8px; text-align: left;'>Actions</th>
+                  </tr>
+               </thead>
+                <tbody>
+                    """
+
           for index, row in df.iterrows():
              patient_id = row["id"]
              row_style = ""
              if row['is_checked_in']:
-                row_style = "background-color: green;"
-             html_table += f"""
-                           <tr style='{row_style} border-bottom: 1px solid #ddd;'>
-                               <td style='padding: 8px;'>{row['patient_name']}</td>
-                               <td style='padding: 8px;'>{row['type']}</td>
-                               <td style='padding: 8px;'>{row['check_in_time'] if row['check_in_time'] else ''}</td>
-                               <td style='padding: 8px;'>{row['priority_score']}</td>
-                               <td style='padding: 8px;'>
-                                     <button style='margin-right: 5px; padding: 5px 10px;' onclick="
-                                       (() => {{
-                                          Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'check_in'}}));
-                                       }})()
-                                      ">Check In</button>
-                                       <button  style='padding: 5px 10px;' onclick="
-                                          (() => {{
-                                              Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'done'}}));
-                                           }})()
-                                           ">Done</button>
-                                  </td>
-                             </tr>
-                             """
+                 row_style = "background-color: green;"
 
+             html_table += f"""
+                         <tr style='{row_style} border-bottom: 1px solid #ddd;'>
+                           <td style='padding: 8px;'>{row['patient_name']}</td>
+                           <td style='padding: 8px;'>{row['type']}</td>
+                           <td style='padding: 8px;'>{row['check_in_time'] if row['check_in_time'] else ''}</td>
+                           <td style='padding: 8px;'>{row['priority_score']}</td>
+                         <td style='padding: 8px;'>
+                         <button style='margin-right: 5px; padding: 5px 10px;' onclick="
+                           (() => {{
+                              Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'check_in'}}));
+                            }})()
+                            ">Check In</button>
+                             <button  style='padding: 5px 10px;' onclick="
+                                (() => {{
+                                    Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'done'}}));
+                                 }})()
+                                ">Done</button>
+                            </td>
+                          </tr>
+                        """
           html_table += "</tbody></table>"
 
-
-          #  Handle button click using javascript callback
-          st.markdown(html_table, unsafe_allow_html=True)
+          # Render HTML using st.components.v1.html
+          st.components.v1.html(
+              f"""
+              {html_table}
+               <script>
+                const elements = document.querySelectorAll("button");
+                elements.forEach(function(element) {{
+                     element.addEventListener('click', function() {{
+                        const value = this.id
+                        const data = value.split("_");
+                        const buttonType = data[0]
+                        const patientId = this.id.split('_')[1]
+                        Streamlit.setComponentValue(JSON.stringify({{patientId: patientId, buttonType: buttonType}}))
+                        }});
+                     }});
+                </script>
+            """,
+              height=400,
+              scrolling=True
+          )
 
           selected_value = st.session_state.get("agGrid_key", None)
+
           if selected_value:
                try:
                    selected_value = json.loads(selected_value)
@@ -159,6 +179,5 @@ def main():
                    st.session_state["agGrid_key"] = None # Remove key from session state
                except:
                    st.session_state["agGrid_key"] = None
-
 if __name__ == "__main__":
     main()
