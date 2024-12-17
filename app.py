@@ -105,9 +105,15 @@ def main():
               minutes, seconds = divmod(remainder, 60)
               return f"{hours:02}:{minutes:02}:{seconds:02}"
 
+          # Define the check in and done button click
+          def handle_button_click(patient_id, button_type):
+             if button_type == "check_in":
+                  check_in_patient(patient_id)
+             elif button_type == "done":
+                  mark_appointment_done(patient_id)
 
           # Create the HTML table
-          html_table = f"""
+          html_table = """
              <table style='width: 100%; border-collapse: collapse;'>
                <thead>
                  <tr style='border-bottom: 1px solid #ddd;'>
@@ -120,16 +126,16 @@ def main():
                </thead>
                 <tbody>
                     """
-
           for index, row in df.iterrows():
-             patient_id = row["id"]
-             row_style = ""
-             if row['is_checked_in']:
-                row_style = "background-color: green;"
-             wait_time = None
-             if row["check_in_time"]:
-               wait_time = datetime.now() - row['check_in_time']
-             html_table += f"""
+              patient_id = row["id"]
+              row_style = ""
+              if row['is_checked_in']:
+                 row_style = "background-color: green;"
+              wait_time = None
+              if row["check_in_time"]:
+                 wait_time = datetime.now() - row['check_in_time']
+
+              html_table += f"""
                          <tr style='{row_style} border-bottom: 1px solid #ddd;'>
                              <td style='padding: 8px;'>{row['sl']}</td>
                            <td style='padding: 8px;'>{row['patient_name']}</td>
@@ -137,57 +143,50 @@ def main():
                            <td style='padding: 8px;'>{format_timedelta(wait_time)}</td>
                          <td style='padding: 8px;'>
                          <button style='margin-right: 5px; padding: 5px 10px;' onclick="
-                           (() => {{
+                            (function() {{
                                Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'check_in'}}));
-                           }})()
-                            ">Check In</button>
+                            }})()
+                             ">Check In</button>
                              <button  style='padding: 5px 10px;' onclick="
-                                (() => {{
-                                    Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'done'}}));
-                                 }})()
+                                (function() {{
+                                     Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'done'}}));
+                                  }})()
                                 ">Done</button>
                             </td>
                           </tr>
                         """
           html_table += "</tbody></table>"
 
-
           # Render HTML using st.components.v1.html
           st.components.v1.html(
               f"""
               {html_table}
-              <script>
-                  const buttons = document.querySelectorAll('button');
-                    buttons.forEach(button => {{
-                         button.addEventListener('click', (e) => {{
-                            e.preventDefault();
-                            const value = e.target.id
-                            const data = value.split("_");
-                            let buttonType = null;
-                             if (data.length> 1){
-                                 buttonType = data[0]
-                            }
-
-                             const patientId = e.target.id.split('_')[1] || e.target.parentElement.id.split('_')[1]
-                            Streamlit.setComponentValue(JSON.stringify({{patientId: patientId, buttonType: buttonType}}))
+               <script>
+                const elements = document.querySelectorAll("button");
+                elements.forEach(function(element) {{
+                     element.addEventListener('click', function() {{
+                        const value = this.id
+                        const data = value.split("_");
+                        const buttonType = data[0]
+                        const patientId = this.id.split('_')[1]
+                        Streamlit.setComponentValue(JSON.stringify({{patientId: patientId, buttonType: buttonType}}))
                         }});
-                    }});
-               </script>
+                     }});
+                </script>
             """,
               height=400,
-              scrolling=True
-           )
+              scrolling=True,
+
+          )
+
           selected_value = st.session_state.get("agGrid_key", None)
           if selected_value:
                try:
                    selected_value = json.loads(selected_value)
                    if selected_value.get('buttonType'):
                        handle_button_click(int(selected_value['patientId']), selected_value['buttonType'])
-                   st.session_state["agGrid_key"] = None
+                   st.session_state["agGrid_key"] = None # Remove key from session state
                except:
                    st.session_state["agGrid_key"] = None
-
-
-
 if __name__ == "__main__":
     main()
