@@ -54,7 +54,6 @@ def main():
             except Exception as e:
                  st.error(f"Error loading appointments: {e}")
 
-
     # load appointments from pdf if the queue is empty.
     if not st.session_state.queue:
         load_appointments()
@@ -81,7 +80,6 @@ def main():
                st.session_state.queue = queue_agent.get_prioritized_queue()
                st.rerun()
 
-
           def mark_appointment_done(patient_id):
                 session = Session()
                 try:
@@ -97,7 +95,14 @@ def main():
                 finally:
                     session.close()
 
-
+           # Convert datetime to readable string
+          def format_timedelta(time_diff):
+              if not time_diff:
+                  return "Not Checked In"
+              total_seconds = int(time_diff.total_seconds())
+              hours, remainder = divmod(total_seconds, 3600)
+              minutes, seconds = divmod(remainder, 60)
+              return f"{hours:02}:{minutes:02}:{seconds:02}"
 
           # Define the check in and done button click
           def handle_button_click(patient_id, button_type):
@@ -111,28 +116,30 @@ def main():
              <table style='width: 100%; border-collapse: collapse;'>
                <thead>
                  <tr style='border-bottom: 1px solid #ddd;'>
+                   <th style='padding: 8px; text-align: left;'>SL</th>
                    <th style='padding: 8px; text-align: left;'>Patient Name</th>
                    <th style='padding: 8px; text-align: left;'>Type</th>
-                   <th style='padding: 8px; text-align: left;'>Check In Time</th>
-                   <th style='padding: 8px; text-align: left;'>Priority Score</th>
+                   <th style='padding: 8px; text-align: left;'>Wait Time</th>
                    <th style='padding: 8px; text-align: left;'>Actions</th>
                   </tr>
                </thead>
                 <tbody>
                     """
-
           for index, row in df.iterrows():
              patient_id = row["id"]
              row_style = ""
              if row['is_checked_in']:
-                 row_style = "background-color: green;"
+                row_style = "background-color: green;"
+             wait_time = None
+             if row["check_in_time"]:
+               wait_time = datetime.now() - row['check_in_time']
 
              html_table += f"""
                          <tr style='{row_style} border-bottom: 1px solid #ddd;'>
+                             <td style='padding: 8px;'>{row['sl']}</td>
                            <td style='padding: 8px;'>{row['patient_name']}</td>
                            <td style='padding: 8px;'>{row['type']}</td>
-                           <td style='padding: 8px;'>{row['check_in_time'] if row['check_in_time'] else ''}</td>
-                           <td style='padding: 8px;'>{row['priority_score']}</td>
+                           <td style='padding: 8px;'>{format_timedelta(wait_time)}</td>
                          <td style='padding: 8px;'>
                          <button style='margin-right: 5px; padding: 5px 10px;' onclick="
                            (() => {{
@@ -148,6 +155,7 @@ def main():
                           </tr>
                         """
           html_table += "</tbody></table>"
+
 
           # Render HTML using st.components.v1.html
           st.components.v1.html(
@@ -168,7 +176,6 @@ def main():
             """,
               height=400,
               scrolling=True,
-
           )
 
           selected_value = st.session_state.get("agGrid_key", None)
@@ -179,6 +186,7 @@ def main():
                    st.session_state["agGrid_key"] = None # Remove key from session state
                except:
                    st.session_state["agGrid_key"] = None
+
 
 if __name__ == "__main__":
     main()
