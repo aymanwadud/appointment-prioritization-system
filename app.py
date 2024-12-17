@@ -54,7 +54,6 @@ def main():
             except Exception as e:
                  st.error(f"Error loading appointments: {e}")
 
-
     # load appointments from pdf if the queue is empty.
     if not st.session_state.queue:
         load_appointments()
@@ -112,6 +111,7 @@ def main():
                   check_in_patient(patient_id)
              elif button_type == "done":
                   mark_appointment_done(patient_id)
+
           # Create the HTML table
           html_table = f"""
              <table style='width: 100%; border-collapse: collapse; color: white;'>
@@ -142,23 +142,20 @@ def main():
                            <td style='padding: 8px;'>{format_timedelta(wait_time)}</td>
                          <td style='padding: 8px;'>
                          <button style='margin-right: 5px; padding: 5px 10px;' onclick="
-                            (() => {{
-                                 const id = '{patient_id}';
-                                 const type = 'check_in'
-                                 Streamlit.setComponentValue(JSON.stringify({{patientId: id, buttonType: type}}));
+                           (() => {{
+                              Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'check_in'}}));
                             }})()
                             ">Check In</button>
                              <button  style='padding: 5px 10px;' onclick="
                                 (() => {{
-                                    const id = '{patient_id}';
-                                    const type = 'done'
-                                    Streamlit.setComponentValue(JSON.stringify({{patientId: id, buttonType: type}}));
+                                    Streamlit.setComponentValue(JSON.stringify({{patientId: '{patient_id}', buttonType: 'done'}}));
                                  }})()
                                 ">Done</button>
                             </td>
                           </tr>
                         """
           html_table += "</tbody></table>"
+
 
           # Render HTML using st.components.v1.html
           st.components.v1.html(
@@ -182,25 +179,24 @@ def main():
                      draggedItem = event.target;
                      event.dataTransfer.effectAllowed = "move"
                  }});
-
-                  table.addEventListener('dragover', (event) => {{
+                table.addEventListener('dragover', (event) => {{
                      event.preventDefault();
-                    if (event.target.tagName === 'TR') {
+                    if (event.target.tagName === 'TR') {{
                         const targetRow = event.target;
                         table.insertBefore(draggedItem, targetRow)
-                    }
+                    }}
                  }});
-
-                table.addEventListener('dragend', (event) => {{
-                         const rows = Array.from(table.children);
-                         const rowsToUpdate = rows.map((row, index) => ({{ id: row.getAttribute('data-id'), sl: index + 1 }}));
-                         Streamlit.setComponentValue(JSON.stringify(rowsToUpdate))
-                 }});
+                 table.addEventListener('dragend', function(event) {{
+                    const rows = Array.from(table.children);
+                     const rowsToUpdate = rows.map(function(row, index) {{
+                       return {{ id: row.getAttribute('data-id'), sl: index + 1 }};
+                     }});
+                   Streamlit.setComponentValue(JSON.stringify(rowsToUpdate));
+                }});
                 </script>
             """,
               height=400,
               scrolling=True,
-
           )
 
           selected_value = st.session_state.get("agGrid_key", None)
@@ -213,24 +209,22 @@ def main():
                except:
                    st.session_state["agGrid_key"] = None
           rowsToUpdate = st.session_state.get("agGrid_key", None)
-
           if rowsToUpdate:
             session = Session()
             try:
               rowsToUpdate =  json.loads(rowsToUpdate)
               for row in rowsToUpdate:
-                  appt = session.query(Appointment).filter(Appointment.id == row['id']).first()
-                  if appt:
+                appt = session.query(Appointment).filter(Appointment.id == row['id']).first()
+                if appt:
                     appt.sl = row['sl']
               session.commit()
               st.session_state.queue = queue_agent.get_prioritized_queue()
               st.session_state["agGrid_key"] = None # Remove key from session state
               st.rerun()
             except:
-                session.rollback()
+               session.rollback()
             finally:
-                session.close()
-
+               session.close()
 
 if __name__ == "__main__":
     main()
