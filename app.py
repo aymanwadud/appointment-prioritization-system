@@ -6,7 +6,6 @@ from agents.priority_queue_management_agent import PriorityQueueManagementAgent
 from agents.real_time_monitoring_agent import RealTimeMonitoringAgent
 from utils.database import Appointment, Session
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from datetime import datetime
 from dotenv import load_dotenv
 import os
@@ -40,7 +39,6 @@ def main():
         finally:
             session.close()
 
-
     # Function to load data from PDF
     def load_appointments():
         uploaded_file = st.file_uploader("Upload your PDF here", type=["pdf"])
@@ -57,15 +55,15 @@ def main():
                  st.error(f"Error loading appointments: {e}")
 
 
-
-
     # load appointments from pdf if the queue is empty.
     if not st.session_state.queue:
         load_appointments()
 
-
     # Load the queue from database if it exists in session state.
     if st.session_state.queue:
+        # Load the queue from database.
+          queue = queue_agent.get_prioritized_queue()
+
           # Convert queue to dataframe
           df = pd.DataFrame([{"id": appt.id,
                              "patient_name": appt.patient_name,
@@ -74,7 +72,8 @@ def main():
                              "priority_score": appt.priority_score,
                              "sl": appt.sl,
                              "is_checked_in": appt.is_checked_in
-                            } for appt in st.session_state.queue])
+                            } for appt in queue])
+
           # Check in functionality
           def check_in_patient(patient_id):
                monitoring_agent.check_in(patient_id)
@@ -98,140 +97,75 @@ def main():
                 finally:
                     session.close()
 
-          # Build the ag grid
-          gb = GridOptionsBuilder.from_dataframe(df)
-          gb.configure_selection(selection_mode="single", use_checkbox=False)
-          gb.configure_column("id", editable=False)
-          gb.configure_column("patient_name", editable=False)
-          gb.configure_column("type", editable=False)
-          gb.configure_column("priority_score", editable=False)
-          gb.configure_column("sl", editable = False)
-          gb.configure_column("check_in_time", editable = False)
-          gb.configure_column("is_checked_in", editable = False)
-          gb.configure_column("check_in_time", cellStyle={'font-style': 'italic'})
 
 
-          # If the patient is checked in, we make the cell green
-          for i in range(len(df)):
-            if df['is_checked_in'][i]:
-                gb.configure_column("patient_name", cellStyle = JsCode(
-                    """
-                    function(params) {
-                         return {'backgroundColor': 'green'}
-                    };
-                    """
-                ))
-
-          gb.configure_column(
-              "check_in",
-              headerName="Check In",
-              cellRenderer=JsCode("""
-                  function(params) {
-                      return '<button id="check_in_' + params.data.id + '">Check In</button>';
-                 }
-             """),
-             width=120
-          )
-
-          gb.configure_column(
-              "done",
-              headerName="Done",
-              cellRenderer=JsCode("""
-                  function(params) {
-                      return '<button id="done_' + params.data.id + '">Done</button>';
-                  }
-              """),
-              width=100
-          )
-
-          go = gb.build()
-          go["allow_unsafe_jscode"] = True
-          go["suppressMoveWhenRowDragging"] = True
-
-          # Create custom JsCode for onGridReady event
-          on_grid_ready = JsCode(
-              """
-                function(params) {
-                  var grid = params.api;
-                   function checkIn(e){
-                       grid.applyTransaction({
-                           add:[],
-                           update:[],
-                           remove: []
-                       })
-                        // Send a message to streamlit
-                        // The message will be handled by a callback on the python side.
-                        Streamlit.setComponentValue(e.id)
-                    }
-                   function done(e){
-                        grid.applyTransaction({
-                           add:[],
-                           update:[],
-                           remove: []
-                       })
-                        // Send a message to streamlit
-                        // The message will be handled by a callback on the python side.
-                        Streamlit.setComponentValue(e.id + "_done")
-                    }
-                     params.api.addEventListener('rowDragEnd', function(event) {
-                            var rowsToUpdate = [];
-                            params.api.forEachNodeAfterFilterAndSort( function(rowNode, index) {
-                              rowsToUpdate.push({id: rowNode.data.id, sl: index+1});
-                            });
-                            Streamlit.setComponentValue(JSON.stringify(rowsToUpdate));
-                        });
-                   window.checkIn = checkIn;
-                   window.done = done;
-                };
-                """
-          )
-
-
-          grid_response = AgGrid(df,
-                                  gridOptions=go,
-                                  data_return_mode='AS_INPUT',
-                                  update_mode='MODEL_CHANGED',
-                                  fit_columns_on_grid_load=True,
-                                  theme='streamlit', #Add theme color to the table
-                                  enable_enterprise_modules=True,
-                                  height=350,
-                                  width='100%',
-                                  reload_data=True,
-                                  allow_unsafe_jscode=True,
-                                  on_grid_ready=on_grid_ready,
-                                  key = "grid_table"
-
-                                  )
-
-          # Handle row selection and button actions
-          selected_rows = grid_response["selected_rows"]
-          if selected_rows:
-              for row in selected_rows:
-                  patient_id = row["id"]
-                  st.info(f"Processing Patient ID: {patient_id}")
-        
-                  # Check-in and mark the appointment as done
+          # Define the check in and done button click
+          def handle_button_click(patient_id, button_type):
+             if button_type == "check_in":
                   check_in_patient(patient_id)
+             elif button_type == "done":
                   mark_appointment_done(patient_id)
 
-          if grid_response.get('data_rows'):
-            selected_rows = grid_response.get('data_rows', [])
-            if selected_rows:
-                session = Session()
-                try:
-                    rowsToUpdate = st.session_state.get("agGrid_key", None)
-                    if rowsToUpdate:
-                        rowsToUpdate =  json.loads(rowsToUpdate)
-                        for row in rowsToUpdate:
-                            appt = session.query(Appointment).filter(Appointment.id == row['id']).first()
-                            if appt:
-                                appt.sl = row['sl']
-                            session.commit()
-                            st.session_state.queue = queue_agent.get_prioritized_queue()
-                            st.session_state["agGrid_key"] = None # Remove key from session state
-                            st.rerun()
-                finally:
-                   session.close()
+          # Create the HTML table
+          html_table = """<table style='width: 100%; border-collapse: collapse;'>
+                        <thead>
+                          <tr style='border-bottom: 1px solid #ddd;'>
+                            <th style='padding: 8px; text-align: left;'>Patient Name</th>
+                            <th style='padding: 8px; text-align: left;'>Type</th>
+                            <th style='padding: 8px; text-align: left;'>Check In Time</th>
+                            <th style='padding: 8px; text-align: left;'>Priority Score</th>
+                            <th style='padding: 8px; text-align: left;'>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>"""
+
+          for index, row in df.iterrows():
+              patient_id = row["id"]
+              row_style = ""
+              if row['is_checked_in']:
+                 row_style = "background-color: green;"
+              html_table += f"""
+                          <tr style='{row_style} border-bottom: 1px solid #ddd;'>
+                              <td style='padding: 8px;'>{row['patient_name']}</td>
+                              <td style='padding: 8px;'>{row['type']}</td>
+                              <td style='padding: 8px;'>{row['check_in_time'] if row['check_in_time'] else ''}</td>
+                              <td style='padding: 8px;'>{row['priority_score']}</td>
+                            <td style='padding: 8px;'>
+                                  <button style='margin-right: 5px; padding: 5px 10px;' onclick="checkIn('{patient_id}')">Check In</button>
+                                   <button  style='padding: 5px 10px;' onclick="done('{patient_id}')">Done</button>
+                               </td>
+                          </tr>
+                          """
+          html_table += "</tbody></table>"
+
+
+          #  Handle button click using javascript callback
+          st.markdown(html_table, unsafe_allow_html=True)
+          st.markdown("""
+               <script>
+                const elements = document.querySelectorAll("button");
+                elements.forEach(function(element) {
+                     element.addEventListener('click', function() {
+                        const value = this.id
+                        const data = value.split("_");
+                        const buttonType = data[0]
+                        const patientId = data[1]
+                        Streamlit.setComponentValue(JSON.stringify({patientId: patientId, buttonType: buttonType}))
+                        });
+                     });
+                </script>
+            """, unsafe_allow_html=True)
+          selected_value = st.session_state.get("agGrid_key", None)
+
+          if selected_value:
+              try:
+                 selected_value = json.loads(selected_value)
+                 handle_button_click(int(selected_value['patientId']), selected_value['buttonType'])
+                 st.session_state["agGrid_key"] = None # Remove key from session state
+              except:
+                 st.session_state["agGrid_key"] = None # Remove key from session state
+
+
 
 if __name__ == "__main__":
     main()
